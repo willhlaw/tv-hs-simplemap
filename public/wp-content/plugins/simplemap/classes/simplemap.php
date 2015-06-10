@@ -69,9 +69,15 @@ if ( !class_exists( 'Simple_Map' ) ) {
 			// Updating Div
 			$sm_updating_img_src = apply_filters( 'sm_updating_img_src', SIMPLEMAP_URL . '/inc/images/loading.gif' );
 			$sm_updating_div_size = apply_filters( 'sm_updating_img_size', 'height:' . $map_height . ';width:' . $map_width . ';' );
+			//add map_top here instead of bottom of input form search 
+			$to_display .= '<a id="map_top"></a>';
 			$to_display .= '<div id="simplemap-updating" style="'. $sm_updating_div_size. '"><img src="' . $sm_updating_img_src . '" alt="' . __( 'Loading new locations', 'SimpleMap' ) . '" /></div>';
 
 			$to_display .= '<div id="simplemap" style="' . $hidemap . 'width: ' . $map_width . '; height: ' . $map_height . ';"></div>';
+
+			//Display input search
+			$to_display .= $this->location_search_form( $atts );
+
 			$to_display .= '<div id="results" style="' . $hidelist . 'width: ' . $map_width . ';"></div>';
 			$to_display .= '<script type="text/javascript">';
 			$to_display .= '(function($) { ';
@@ -211,7 +217,7 @@ if ( !class_exists( 'Simple_Map' ) ) {
 			$is_sm_search		= isset( $_REQUEST['location_is_search_results'] ) ? 1 : 0;
 
 			// Normal Field inputs
-			$ffi['street']		= array( 'label' => apply_filters( 'sm-search-label-street', __( 'Street: ', 'SimpleMap' ), $post ), 'input' => '<input type="text" id="location_search_address_field" name="location_search_address" value="' . esc_attr( $address_value ) . '" />' );
+			$ffi['street']		= array( 'label' => apply_filters( 'sm-search-label-street', __( 'Address: ', 'SimpleMap' ), $post ), 'input' => '<input type="text" id="location_search_address_field" name="location_search_address" value="' . esc_attr( $address_value ) . '" />' );
 			$ffi['city']		= array( 'label' => apply_filters( 'sm-search-label-city', __( 'City: ', 'SimpleMap' ), $post ), 'input' => '<input type="text"  id="location_search_city_field" name="location_search_city" value="' . esc_attr( $city_value ) . '" />' );
 			$ffi['state']		= array( 'label' => apply_filters( 'sm-search-label-state', __( 'State: ', 'SimpleMap' ), $post ), 'input' => '<input type="text" id="location_search_state_field" name="location_search_state" value="' . esc_attr( $state_value ) . '" />' );
 			$ffi['zip']			= array( 'label' => apply_filters( 'sm-search-label-zip', __( 'Zip: ', 'SimpleMap' ), $post ), 'input' => '<input type="text" id="location_search_zip_field" name="location_search_zip" value="' . esc_attr( $zip_value ) . '" />' );
@@ -239,7 +245,7 @@ if ( !class_exists( 'Simple_Map' ) ) {
 			$hidesearch = $hide_search ? " style='display:none;' " : '';
 
 			$location_search  = '<div id="map_search" >';
-			$location_search .= '<a id="map_top"></a>';
+			//$location_search .= '<a id="map_top"></a>';
 			$location_search .= '<form ' . $on_submit . ' name="location_search_form" id="location_search_form" action="' . $action . '" method="' . $method . '">';
 
 			$location_search .= '<table class="location_search"' . $hidesearch . '>';
@@ -688,6 +694,765 @@ if ( !class_exists( 'Simple_Map' ) ) {
 			var markersArray = [];
 			var infowindowsArray = [];
 
+			/* (C) 2009 Ivan Boldyrev <lispnik@gmail.com>
+			 *
+			 * Fgh is a fast GeoHash implementation in JavaScript.
+			 *
+			 * Fgh is free software; you can redistribute it and/or modify
+			 * it under the terms of the GNU General Public License as published by
+			 * the Free Software Foundation; either version 3 of the License, or
+			 * (at your option) any later version.
+			 *
+			 * Fgh is distributed in the hope that it will be useful,
+			 * but WITHOUT ANY WARRANTY; without even the implied warranty of
+			 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+			 * GNU General Public License for more details.
+			 *
+			 * You should have received a copy of the GNU General Public License
+			 * along with this software; if not, see <http://www.gnu.org/licenses/>.
+			 */
+
+			(function () {
+			    var _tr = "0123456789bcdefghjkmnpqrstuvwxyz";
+			    /* This is a table of i => "even bits of i combined".  For example:
+			     * #b10101 => #b111
+			     * #b01111 => #b011
+			     * #bABCDE => #bACE
+			     */
+			    var _dm = [0, 1, 0, 1, 2, 3, 2, 3, 0, 1, 0, 1, 2, 3, 2, 3, 
+			               4, 5, 4, 5, 6, 7, 6, 7, 4, 5, 4, 5, 6, 7, 6, 7];
+
+			    /* This is an opposit of _tr table: it maps #bABCDE to
+			     * #bA0B0C0D0E.
+			     */
+			    var _dr = [0, 1, 4, 5, 16, 17, 20, 21, 64, 65, 68, 69, 80,
+			               81, 84, 85, 256, 257, 260, 261, 272, 273, 276, 277,
+			               320, 321, 324, 325, 336, 337, 340, 341];
+
+			    function _cmb (str, pos) {
+			        return (_tr.indexOf(str.charAt(pos)) << 5) | (_tr.indexOf(str.charAt(pos+1)));
+			    };
+
+			    function _unp(v) {
+			        return _dm[v & 0x1F] | (_dm[(v >> 6) & 0xF] << 3);
+			    }
+
+			    function _sparse (val) {
+			        var acc = 0, off = 0;
+
+			        while (val > 0) {
+			            low = val & 0xFF;
+			            acc |= _dr[low] << off;
+			            val >>= 8;
+			            off += 16;
+			        }
+			        return acc;
+			    }
+
+			    window['Fgh'] = {
+			        decode: function (str) {
+			            var L = str.length, i, w, ln = 0.0, lt = 0.0;
+
+			            // Get word; handle odd size of string.
+			            if (L & 1) {
+			                w = (_tr.indexOf(str.charAt(L-1)) << 5);
+			            } else {
+			                w = _cmb(str, L-2);
+			            }
+			            lt = (_unp(w)) / 32.0;
+			            ln = (_unp(w >> 1)) / 32.0;
+			            
+			            for (i=(L-2) & ~0x1; i>=0; i-=2) {
+			                w = _cmb(str, i);
+			                lt = (_unp(w) + lt) / 32.0;
+			                ln = (_unp(w>>1) + ln) / 32.0;
+			            }
+			            return {lat:  180.0*(lt-0.5), lon: 360.0*(ln-0.5)};
+			        },
+			        
+			        encode: function (lat, lon, bits) {
+			            lat = lat/180.0+0.5;
+			            lon = lon/360.0+0.5;
+			            
+			            /* We generate two symbols per iteration; each symbol is 5
+			             * bits; so we divide by 2*5 == 10.
+			             */
+			            var r = '', l = Math.ceil(bits/10), hlt, hln, b2, hi, lo, i;
+
+			            for (i = 0; i < l; ++i) {
+			                lat *= 0x20;
+			                lon *= 0x20;
+
+			                hlt = Math.min(0x1F, Math.floor(lat));
+			                hln = Math.min(0x1F, Math.floor(lon));
+			                
+			                lat -= hlt;
+			                lon -= hln;
+			                
+			                b2 = _sparse(hlt) | (_sparse(hln) << 1);
+			                
+			                hi = b2 >> 5;
+			                lo = b2 & 0x1F;
+
+			                r += _tr.charAt(hi) + _tr.charAt(lo);
+			            }
+			            
+			            r = r.substr(0, Math.ceil(bits/5));
+			            return r;
+			        },
+			    
+			        checkValid: function(str) {
+			            return !!str.match(/^[0-9b-hjkmnp-z]+$/);
+			        }
+			    }
+			})();
+			//var directionsDisplay;
+			//var directionsService;
+			//var directionsResults;
+
+			/* Function: verifyStyle function
+			 * Used to detect if a css selector exists. To verify a class, pass in ".className".
+			 * Author: ljo8877 at http://lawrence.ecorp.net modified by <will.lawrence [at] gmail>
+			 * Source: http://web.archive.org/web/20071210160927/http://www.experts-exchange.com/Programming/Languages/Scripting/JavaScript/Q_21685655.html
+			 */
+			function verifyStyle(selector) {
+			    var rules;
+			    var haveRule = false;
+
+			    if (typeof document.styleSheets != "undefined") {   //is this supported
+			        var cssSheets = document.styleSheets;
+
+			        outerloop:
+			        for (var i = 0; i < cssSheets.length; i++) {
+
+						//skip external css stylesheets due to some browsers (e.g. Firefox) throwing a Security exception
+						if (typeof cssSheets[i].href === "string" && cssSheets[i].href.indexOf(location.host) < 0) {
+							//this is an external style sheet so skip it
+							continue;
+						}
+
+			            //using IE or FireFox/Standards Compliant
+			            rules =  (typeof cssSheets[i].cssRules != "undefined") ? cssSheets[i].cssRules : cssSheets[i].rules;
+
+						//skip check if rules does not exist or is malformed
+						if (typeof rules !== "undefined" && rules !== null && typeof rules.length === "number") {
+				            for (var j = 0; j < rules.length; j++) {
+				                 if (rules[j].selectorText == selector) {
+				                         haveRule = true;
+				                        break outerloop;
+				                 }
+				            }//innerloop
+				        }
+
+			        }//outer loop
+			    }//endif
+
+			    return haveRule;
+			}
+			
+			/* Function: Tooltip class and TooltipWrapper class 
+			 * Author: medelbou <me[at]medelbou[dot]com> modified by <will.lawrence [at] gmail>
+			 * Dependencies: Google.maps object needs to be instantiated. A 'tooltip' css class should be created.
+			 * Source: https://github.com/medelbou/Tooltip-for-Google-Maps and http://medelbou.wordpress.com/2012/02/03/creating-a-tooltip-for-google-maps-javascript-api-v3/              
+			 */
+
+			//wrapper for Tooltip class to ensure it only is called when Google.maps object has been instantiated.
+			function TooltipWrapper() {
+
+				/*
+				 Constructor for the tooltip
+				 @ param options an object containing: marker(required), content(required) and cssClass(a css class, optional)
+				 @ see google.maps.OverlayView()
+				 */
+
+				function Tooltip(options) {
+
+				    // Now initialize all properties.
+				    this.marker_ = options.marker;
+				    this.content_ = options.content;
+				    this.map_ = options.marker.get('map');
+				    this.cssClass_ = options.cssClass || null;
+
+					this.cssClassExists_ = false; //used to detect if developer using this plugin has defined a 'tooltip' css class
+					if (this.cssClass_ !== null && typeof verifyStyle === "function") {
+						this.cssClassExists_ = verifyStyle("." + this.cssClass_);
+					}
+
+				    // We define a property to hold the content's
+				    // div. We'll actually create this div
+				    // upon receipt of the add() method so we'll
+				    // leave it null for now.
+				    this.div_ = null;
+
+				    //Explicitly call setMap on this overlay
+				    this.setMap(this.map_);
+				    var me = this;
+				    // Show tooltip on mouseover event.
+				    google.maps.event.addListener(me.marker_, 'mouseover', function () {
+				        me.show();
+				    });
+				    // Hide tooltip on mouseout event.
+				    google.maps.event.addListener(me.marker_, 'mouseout', function () {
+				        me.hide();
+				    });
+				}
+				// Now we extend google.maps.OverlayView()
+				Tooltip.prototype = new google.maps.OverlayView();
+
+				// onAdd is one of the functions that we must implement, 
+				// it will be called when the map is ready for the overlay to be attached.
+				Tooltip.prototype.onAdd = function () {
+
+				    // Create the DIV and set some basic attributes.
+				    var div = document.createElement('DIV');
+				    div.style.position = "absolute";
+				    // Hide tooltip
+				    div.style.visibility = "hidden";
+				    if (this.cssClass_) {
+				        div.className += " " + this.cssClass_;
+				    }
+
+					//add default styles if cssClass does not exist
+				    if (!this.cssClassExists_) {
+						div.style.border = "1px thin #eee";
+						div.style.color = "white";
+						div.style.backgroundColor = "#428bca";
+						div.style.padding = "5px";
+					}
+
+				    //Attach content to the DIV.
+				    div.innerHTML = this.content_;
+
+				    // Set the overlay's div_ property to this DIV
+				    this.div_ = div;
+
+				    // We add an overlay to a map via one of the map's panes.
+				    // We'll add this overlay to the floatPane pane.
+				    var panes = this.getPanes();
+				    panes.floatPane.appendChild(this.div_);
+
+				}
+				// We here implement draw
+				Tooltip.prototype.draw = function () {
+
+				    // Position the overlay. We use the position of the marker
+				    // to peg it to the correct position, just northeast of the marker.
+				    // We need to retrieve the projection from this overlay to do this.
+				    var overlayProjection = this.getProjection();
+
+				    // Retrieve the coordinates of the marker
+				    // in latlngs and convert them to pixels coordinates.
+				    // We'll use these coordinates to place the DIV.
+				    var ne = overlayProjection.fromLatLngToDivPixel(this.marker_.getPosition());
+
+				    // Position the DIV.
+				    var div = this.div_;
+				    div.style.left = ne.x + 'px';
+				    div.style.top = ne.y + 'px';
+
+				}
+				// We here implement onRemove
+				Tooltip.prototype.onRemove = function () {
+				    this.div_.parentNode.removeChild(this.div_);
+				}
+
+				// Note that the visibility property must be a string enclosed in quotes
+				Tooltip.prototype.hide = function () {
+				    if (this.div_) {
+				        this.div_.style.visibility = "hidden";
+				    }
+				}
+
+				Tooltip.prototype.show = function () {
+				    if (this.div_) {
+				        this.div_.style.visibility = "visible";
+				    }
+				}
+
+				return Tooltip;
+			};
+
+			
+			/* Function: GmapDirections class
+			 * Author: willhlaw <will.lawrence [at] gmail>
+			 * Dependencies: jQuery and Google.maps object needs to be instantiated.
+			 *               Also relies on Ivan Boldyrev's Fgh fast GeoHash implementation in JavaScript.
+			 */
+			function GmapDirections(mapContainerId, opts) {
+				var thisObj = this; //so that this can be bound to something in an event handler
+				var options = opts || {}; //prevents undefined errors if no options parameter is passed in. (e.g. options.option1 will no longer complain about opdtions object being undefined)
+				thisObj.display = null; //Google DirectionsRenderer object
+				thisObj.service = null; //Google DirectionsServive object
+				thisObj.markerWaypoints = []; //marker array for direction results
+				thisObj.startMarker = null; //placemark for start address of a trip
+				thisObj.geoHashBitLen = options.geoHashBitLen || 24; //used for Fgh encode function where bitlen purpose is to geohash to close-by markers to a one or two character difference for unique comparison and find matches between marker directions and waypoints.
+
+				//set options or defaults
+				thisObj.mapContainerId = mapContainerId || opts.mapContainerId || 'simplemap';
+				thisObj.mapCenter = "";
+				thisObj.directionRendererOpts = options.directionRendererOpts || ({
+					suppressMarkers: true, 
+					preserveViewport: false, 
+					draggable: true
+				});
+				thisObj.travelMode = options.travelMode; // use default option later in call, because google object may not be defined yet. google.maps.DirectionsTravelMode.DRIVING; //cannot be Transit because multiple waypoints does not work for transit
+				thisObj.optimizeWaypoints = options.optimizeWaypoints; // use default option later because google may not be defined.
+				thisObj.resultsDivId = options.resultsDivId || thisObj.mapContainerId + "-results"; //id of a new div where results from Google Directions API html will be put
+
+				thisObj.startPointDivID = options.startPointDivID || "gd-start";
+				thisObj.startPointLabel = options.startPointLabel || "Your trip's starting address:";
+				thisObj.startPointID = options.startPointID || "gd-startPoint";
+				thisObj.startAddress = ""; //stores value when user enters an address for the start of their directions
+				thisObj.reGetDirectionsFlag = options.reGetDirectionsFlag || false; //if true, renders Recalculate Trip button below map container
+				thisObj.clearDirectionsFlag = options.clearDirectionsFlag || false; //if true, renders Clear Trip button below map containr
+
+				if(typeof(thisObj.setDisplay)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.setDisplay = function (map) {
+						thisObj.display = new google.maps.DirectionsRenderer(thisObj.directionRendererOpts);
+						thisObj.display.setMap(map);
+
+						//get or create a div to populate the directions
+						thisObj.results = document.getElementById(thisObj.resultsDivId);
+						if (thisObj.results === null) {
+							//create div for directions 
+							var el = document.createElement("div");
+							el.id = thisObj.resultsDivId;
+							insertAfter(document.getElementById( mapContainerId ), el);
+							thisObj.results = el;
+						}
+
+						thisObj.display.setPanel(thisObj.results);
+
+						//instead of below function to un-overlap the A and B icons with start and destination text, use css for adp-text class instead
+						/* 
+						google.maps.event.addListener(directions.display, 'directions_changed', function() {
+							//un-overlap the A and B icons and the start and destination text (which are class .adp-text.
+							setTimeout(function() {
+								jQuery(".adp-text").css('width', 0); //this value may need to be tweaked per page or commented out to use css for adp-text class instead
+							}, 1000);
+						});
+						*/
+
+						thisObj.service = new google.maps.DirectionsService();
+					};
+				}
+
+				if(typeof(thisObj.clearDirections)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.clearDirections = function () {
+						//clear directions results and blue directional line(s) from map
+						thisObj.display.set('directions', null);
+						//clear waypoint markers from map
+						for (var i = thisObj.markerWaypoints.length - 1; i >= 0; i-- ) {
+						  	thisObj.markerWaypoints[i].setMap(null);
+						}
+						//clear start marker, if it exists;
+						if (thisObj.startMarker !== null) {
+							thisObj.startMarker.setMap(null);
+						}
+					};
+				}
+
+				/**
+				* For end of each leg, place a marker, and attach the marker to an array so we can keep track of it
+				* @param object directionResult //response from google directions
+				*/
+				if(typeof(thisObj.showSteps)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.showSteps = function (directionResult) {
+						var theRoute = directionResult.routes[0].legs;
+						var stepDisplay = new google.maps.InfoWindow();
+
+						//TODO, programmatically determine these images after directions results get set
+						var directionsImage = [];
+						directionsImage[0] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenA.png";
+						directionsImage[1] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenB.png";
+						directionsImage[2] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenC.png";
+						directionsImage[3] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenD.png";
+						directionsImage[4] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenE.png";
+						directionsImage[5] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenF.png";
+						directionsImage[6] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenG.png";
+						directionsImage[7] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenH.png";
+						directionsImage[8] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenI.png";
+						directionsImage[9] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenJ.png";
+						directionsImage[10] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenK.png";
+						directionsImage[11] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenL.png";
+						directionsImage[12] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenM.png";
+						directionsImage[13] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenN.png";
+						directionsImage[14] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenO.png";
+						directionsImage[15] = "http://maps.gstatic.com/mapfiles/markers2/icon_greenP.png";
+						//set up the first icon of the strip and show the starting address when it is clicked
+						thisObj.startMarker = new google.maps.Marker({
+							position: theRoute[0].start_location,
+							icon: directionsImage[0],
+							zIndex: google.maps.Marker.MAX_ZINDEX,
+							map: map
+						});	
+						//add a custom Tooltip to display the start location
+						var tooltipOptions={
+						  marker: thisObj.startMarker,// required
+						  content: thisObj.startAddress || theRoute[0].start_address,// required. Shows either what user typed or the actual address Google translated it to.
+						  cssClass: 'tooltip' // name of a css class to apply to tooltip
+						};
+						if (typeof Tooltip === "undefined") {
+							Tooltip = TooltipWrapper();
+						}
+						var tooltip = new Tooltip(tooltipOptions);
+
+						google.maps.event.addListener(thisObj.startMarker, 'click', function() {
+							stepDisplay.setContent(theRoute[0].start_address); //Show the starting address
+							stepDisplay.open(map, startMarker);
+						});
+						var marker;
+						var geoHash; //for matching up with the waypoints title
+						var title = "";
+						for (var i = 0; i < theRoute.length; i++) {
+							marker = new google.maps.Marker({
+								position: theRoute[i].end_location,
+								map: map,
+								icon: directionsImage[i+1],
+								zIndex: google.maps.Marker.MAX_ZINDEX + 1,
+								clickable: false
+							});
+							//no need to add a tooltip because the place marker underneath this directions marker will show the tooltip
+
+							//update the direction results with the title by matching the marker geohash with the corresponding waypoints and using the title
+							geoHash = Fgh.encode(marker.position.lat(), marker.position.lng(), thisObj.geoHashBitLen);
+							title = thisObj.waypoints[geoHash].name;
+							marker.title = title;
+
+							//keep track of markers
+							thisObj.markerWaypoints[i] = marker;
+						}
+
+						//set event when direction markers and results are finished to be able to update the address results div with the title of the placemark
+						//google.maps.event.addListener(thisObj.display, 'directions_changed',function() { //this fired too often
+						setTimeout(function() {
+							var titles = jQuery(".adp-text");
+							//loop through titles but stop before getting to the first one, which is the start address and has no title
+							for (var i = titles.length - 2; i > 0; i--) {
+								jQuery(".adp-text").eq(i).prepend("<div class='gd-placeName'>" + thisObj.markerWaypoints[i-1].title + "</div>");
+							}
+						}, 1500);
+					};
+				}
+
+				/**
+				 * Get the directions from google
+				 * @param string start Optional (start address) //defaults to on page startPoint address
+				 */
+				if(typeof(thisObj.computeDirections)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.computeDirections = function (start) {
+						//reset directions related items first before creating new ones
+						thisObj.clearDirections();
+						//if startPoint does not exist, then create it
+						var startAddress = null;
+						var startPoint = document.getElementById(thisObj.startPointID); //startPointDivID default is 'gd-startPoint'
+						if (!startPoint) {
+							var startPointDiv = document.createElement("div");
+							startPointDiv.id = thisObj.startPointDivID;
+							startPointDiv.innerHTML =  "<table style='margin-top: 2px; width: 0'><tr><td>" + "<label for='" + thisObj.startPointID + "'>" + thisObj.startPointLabel + "</label>" + "</td>" +
+							"<td>" + "<span contenteditable='true' id=" + thisObj.startPointID + " style='border: 1px solid #ddd; margin-top: 4px' />" + "</td>" +
+							"<td>" + "<input type='button' id='gd-reGetDirections' value='Recalculate Trip' />" + "</td>" +
+							"<td>" + "<input type='button' id='gd-clearDirections' value='Clear Trip' />" + "</td>" +
+							"</tr></table>" + 
+							"<br/>";
+							insertAfter(document.getElementById( mapContainerId ), startPointDiv);
+							//add click event to recalculate with new start point with other stops / waypoints the same.
+							jQuery('#gd-reGetDirections').click(function() {
+								thisObj.computeDirections(); //computeDirections handles all the defaults (grabs gd-startPoint from page and uses last waypoint)
+							});
+							//add click event to clear trip
+							jQuery('#gd-clearDirections').click(function() {
+								thisObj.clearDirections(); 
+							});
+							startPoint = document.getElementById(thisObj.startPointID);
+							startAddress = start;
+						} else {
+							startAddress = startPoint.value || startPoint.innerHTML || start; //accounts for when startPoint is an input or a span
+						}
+						//store the startAddress; 	
+						thisObj.startAddress = startAddress;
+						if (thisObj.clearDirectionsFlag && !document.getElementById('gd-clearDirections')) {
+							var newSpanForButton = document.createElement("span");
+							newSpanForButton.innerHTML = "<input type='button' id='gd-clearDirections' value='Clear Trip' />";
+							insertAfter(document.getElementById( mapContainerId) , newSpanForButton);
+							//add click event to clear trip
+							jQuery('#gd-clearDirections').click(function() {
+								thisObj.clearDirections(); //clears stuff maps
+								thisObj.resetStops();	   //clear stops for the directions in memory
+							});
+						}
+						if (thisObj.reGetDirectionsFlag && !document.getElementById('gd-reGetDirections')) {
+							//setup Recalculate Trip 
+							var newSpanForButton = document.createElement("span");
+							newSpanForButton.innerHTML = "<input type='button' id='gd-reGetDirections' value='Recalculate Trip' />";
+							insertAfter(document.getElementById( mapContainerId) , newSpanForButton);
+							//add click event to recalculate with new start point with other stops / waypoints the same.
+							jQuery('#gd-reGetDirections').click(function() {
+								thisObj.computeDirections(); //computeDirections handles all the defaults (grabs gd-startPoint from page and uses last waypoint)
+							});
+						}
+						startPoint.value = startPoint.HTML = startAddress; //sets it in case it is the first address from infowindow
+						//need to remove the last waypoint object because it is the same as our destination, and destination is required to be passed in
+						if (thisObj.endWaypoint === "") {
+							//there are no more waypoints so clear map and results of directions
+							thisObj.clearDirections();
+						}
+						else {
+							var savedEndPoint = thisObj.waypoints[thisObj.endWaypoint];
+							thisObj.removeStop(thisObj.endWaypoint); //temporarily remove last waypoint from waypoints array for Google
+							var request = {
+								origin: startAddress, 
+								destination: savedEndPoint.location,
+								waypoints: thisObj.getStops(),
+								optimizeWaypoints: thisObj.optimizeWaypoints || true,
+								provideRouteAlternatives: true,
+								travelMode: thisObj.travelMode || google.maps.DirectionsTravelMode.DRIVING
+							};
+							thisObj.service.route(request, function(response, status) {
+								if (status == google.maps.DirectionsStatus.OK) {
+									thisObj.display.setDirections(response);
+									thisObj.showSteps(response);
+								} else {
+									alert('Error generating directions. Please try entering another address.');
+									startPoint.value = startPoint.innerHTML = "Please try another address";
+								}
+							});
+							//add endpoint back to waypoints because we removed it above only temporarily
+							var endLat = savedEndPoint.location.split(",")[0];
+							var endLng = savedEndPoint.location.split(",")[1];
+							thisObj.addStop(endLat, endLng, savedEndPoint.name, null, true);
+						}
+
+					}; // end computeDirections
+				}
+
+				if(typeof(thisObj.wrapInfowindow)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.wrapInfowindow = function (windowContent, windowTitle, marker) {
+						//set up default values for case when user has already chosen a startPoint and at least one stop / waypoint
+						var title = "<div style='display: none' id='gd-windowTitle'>" + windowTitle + "</div>";
+						var label = "<label>Would you like to go here?</label>";
+						var input = "";
+						var addButton = "<input type='button' id='gd-goGetDirections' value='Add to Trip' />";
+						var removeButton = "<input type='button' id='gd-removeAndGetDirections' value='Drop from Trip' />";
+						if (!document.getElementById(thisObj.startPointID) || !(document.getElementById(thisObj.startPointID).innerHTML || document.getElementById(thisObj.startPointID).value)) {
+							//no address has been set, so prompt user inside infowindow for first time
+							label = "<label>Would you like to go here? (Enter your starting address):</label>";							
+							input = "<input type='text' id='gd-startAddress' />";
+							removeButton = "";
+						}
+						var lat = marker.position.lat();
+						var lng = marker.position.lng();
+						var geoHash = Fgh.encode(lat, lng, thisObj.geoHashBitLen);
+						if (thisObj.waypoints[geoHash] === undefined) {
+							//this placemark has not been added as as waypoint, so do not show Drop from Trip button
+							removeButton = "";
+						}
+						else {
+							//this placemark has already been added as as waypoint, so do not show Add to Trip button
+							addButton = "";
+						}
+						var wrapper = "<div id='wrapper'>" + "<br/>" + title + label + input + addButton + removeButton + 
+						"<hr>" +
+						windowContent +
+						"</div>";
+						return wrapper;
+					};
+				}
+
+				if(typeof(thisObj.setDirections)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.setDirections = function (clickedMarker, infoWindow) {
+						var lat = clickedMarker.position.lat();
+						var lng = clickedMarker.position.lng();
+						google.maps.event.addDomListener(infoWindow, 'domready', function() {
+							jQuery('#gd-goGetDirections').click(function() {
+								//figure out if this is first time and start is from infowindow (gd-startAddress) or we are adding a stop / waypoint and start is from gd-startPoint which is default so pass in null for start
+								var title = (document.getElementById('gd-windowTitle') !== null) ? document.getElementById('gd-windowTitle').innerHTML : "";
+								var start = (document.getElementById('gd-startAddress') !== null) ? document.getElementById('gd-startAddress').value : null;
+								if (start !== null && !document.getElementById('gd-startAddress').value) {
+									alert('Please enter an address before adding to your trip');
+								} 
+								else {
+									thisObj.addStop(lat, lng, title, null, true); //TODO: embed start address more into directions object instead of relying on gd-startPoint value
+									thisObj.computeDirections(start);
+									infoWindow.close();
+								}
+							});
+						});
+						google.maps.event.addDomListener(infoWindow, 'domready', function() {
+							jQuery('#gd-removeAndGetDirections').click(function() {
+								thisObj.removeStop(lat, lng);
+								thisObj.setNewEndpoint();
+								//remove a stop / waypoint so start will be from gd-startPoint which is default so pass in null for start and nothing for lat and lng because we want waypoint to be used
+								thisObj.computeDirections();
+								infoWindow.close();
+							});
+						});
+					};
+				}
+
+				/************ Functions for managing waypoints or "Stops" along the route ***************/
+
+				thisObj.waypoints = []; //associative array with geohash as keys and values as waypoints objects for Google's Directions waypoints
+				thisObj.waypointsLength = 0; //keep track of length of associative array
+				thisObj.startWaypoint = "";
+				thisObj.endWaypoint = "";
+
+				//getStops returns a non-associative, indexable waypoints array with just location and stopover to match the google directions waypoints array objects
+				if(typeof(thisObj.getStops)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.getStops = function () {
+						var arrayStops = [];
+						var waypoint = {};
+						var gWaypoint = {};
+						for (var key in thisObj.waypoints) {
+							waypoint = thisObj.waypoints[key];
+							gWaypoint = {
+								location : waypoint.location,
+								stopover : waypoint.stopover
+							};
+							arrayStops.push(gWaypoint);
+						}
+						return arrayStops;
+					};
+				}
+
+				//setNewEndpoint with geoHashKey parameter or iterates through associative array and assigns thisObj.endWaypoint to the last value
+				if(typeof(thisObj.setNewEndpoint)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.setNewEndpoint = function (geoHashKey) {
+						thisObj.endWaypoint = geoHashKey || "";
+						if (thisObj.endWaypoint === "") {
+							//assign endWaypoint to the last waypoint in the array
+							for (var key in thisObj.waypoints) {
+								thisObj.endWaypoint = key;
+							}
+						}
+						return thisObj.endWaypoint;
+					};
+				}
+
+				if(typeof(thisObj.setStops)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.setStops = function (directionWaypoints) {
+						thisObj.waypoints = directionWaypoints;
+					};
+				}
+
+				if(typeof(thisObj.addStop)==='undefined') {//guarantees one time prototyping 
+					GmapDirections.prototype.addStop = function(lat, lng, title, isStart, isEnd, stopOverFlag) {
+						var latlngString = "" + lat + "," + lng;
+						var gHash = Fgh.encode(lat, lng, thisObj.geoHashBitLen); //aim with 3rd parameter, bitlen, is to geohash to close-by markers to a one or two character difference for unique comparison and find matches between marker directions and waypoints.
+						thisObj.startWaypoint = (!isStart) ? thisObj.startWaypoint : gHash;
+						thisObj.endWaypoint = (!isEnd) ? thisObj.endWaypoint : gHash;
+						var stopOver = stopOverFlag || true; //default is true, to add waypoint to route as a marker
+						thisObj.waypoints[gHash] = {
+						name: title,
+						location: latlngString,
+						stopover: stopOver
+						};
+						thisObj.waypointsLength += 1;
+					};
+				}
+
+				if(typeof(thisObj.removeStop)==='undefined') { //guarantees one time prototyping 
+					GmapDirections.prototype.removeStop = function(geoHashorLat, lng) {
+						var gHash = "";
+						if (!lng) {
+							//second parameter was missing so assume indexOrLat is an index
+							//parameter was an index "3" or "-1" for the last one
+							gHash = geoHashorLat;
+						}
+						else {
+							//parameters were a lat and lng
+							gHash = Fgh.encode(geoHashorLat, lng, thisObj.geoHashBitLen);
+						}
+						try {
+							//if item being removed is currently a start waypoint or end waypoint, then reset those. Caller or removed this may need to figure out that one of these has been reset and figure out what the new value should be 
+							thisObj.startWaypoint = (thisObj.startWaypoint == gHash) ? thisObj.startWaypoint = "" : thisObj.startWaypoint;
+							thisObj.endWaypoint = (thisObj.endWaypoint == gHash) ? thisObj.endWaypoint = "" : thisObj.endWaypoint; 
+							delete thisObj.waypoints[gHash];
+							thisObj.waypointsLength -= 1;
+						}
+						catch (e) {
+							console.log(gHash + " could not be deleted. Call was to .removeStop(" + geoHashorLat + ", " + lng + ") and error is: " + e);
+						}
+						return gHash;
+					};
+				}
+
+				//clearStops clears all of the waypoints and associated tracking variables
+				if(typeof(thisObj.resetStops)==='undefined') { //guarantees one time prototyping 
+					GmapDirections.prototype.resetStops = function(geoHashorLat, lng) {
+						thisObj.waypoints = []; //associative array with geohash as keys and values as waypoints objects for Google's Directions waypoints
+						thisObj.waypointsLength = 0; //keep track of length of associative array
+						thisObj.startWaypoint = "";
+						thisObj.endWaypoint = "";
+					};
+				}
+			} // end of GmapDirections 'class'
+
+			//create options for the directions object and combine the starting point of the trip with the address field already being used for search and turn on recalculate and clear directions buttons
+			var options = {
+				startPointID : "location_search_address_field",
+				reGetDirectionsFlag : true,
+				clearDirectionsFlag : true
+			}
+			directions = new GmapDirections('simplemap', options); //creates new GmapDirections object to allow user to get directions between different markers (a.k.a. stops or waypoints)
+
+			/* Function: arrangeCategoryColumns 
+						 * Author: willhlaw <will.lawrence [at] gmail>
+						 * Dependencies: jQuery needs to be instantiated.
+						 * Purpose: Turns a list of DOM items that match jQuery(strLabelSelector) and turns each unique string, or type, in front of the item's delimeter 
+						 * into headers (with special characters removed) of a side by side column of items. 
+						 * Additional instructions: A table is created with tr class="column-tr" and td class="column-td type"
+						 * Example: (a) apple (b) bananna (b) berries 
+						 * -> a        b
+						 *    apple    bannana
+						 *             berries
+						 */
+			var arrangeCategoryColumns = function(strLabelSelector, delimeter) {
+			//Sort labels by type into an array
+			//categories[type] = {labels[]}
+			var labels = jQuery(strLabelSelector).children();
+			var categories = [];
+			var type, label;
+			var categoryName;
+			for (var i = 0; i < labels.length; i++) {
+			    name = labels.get(i).innerText || labels.get(i).textContent; //Firefox does not use .innerText, instead, it uses .textContent. 
+			    type = jQuery.trim(name.split(delimeter)[0].replace(/[^\w\s]/gi, '')); //remove special characters and leading and trailing whitespace
+			    var categoryItem = {};
+			    categoryItem.label = name.split(')')[1];
+			    categoryItem.HTML = labels.get(i).outerHTML;
+			    if (categories[type] === undefined) {
+			        categories[type] = [categoryItem];
+			    } else {
+			        categories[type].push(categoryItem);
+			    }
+			}
+
+			//create a table with type.length number of columns
+			//type1 | type2
+			//------|------
+			//item11| item21
+			//item12| item22
+			var parent = labels.parent();
+			var table = '<table>'; 
+			table += '<tr style="vertical-align: top; text-align: left" class="category-tr">';
+			for (var type in categories) {
+			    table += '<td class="category-td ' + type + '">' + type;
+			    for (var categoryItem in categories[type]) {
+			        table += '</br>' + categories[type][categoryItem].HTML.replace(/\((.+)\)/, '');
+			    }
+			    table += '</td>';
+			}
+			table += ('</tr></table>');
+			parent.html(table);
+			};
+
+			//wait until page loads and DOM is ready before
+			jQuery(document).ready( function () {
+				arrangeCategoryColumns("#location_search_sm-category_fields", ')'); //calling function to arrange category labels into a table with columns
+				jQuery("#results").hide(); //hides search results on load
+			});
+
+
 			function clearInfoWindows() {
 				if (infowindowsArray) {
 					for (var i=0;i<infowindowsArray.length;i++) {
@@ -698,10 +1463,17 @@ if ( !class_exists( 'Simple_Map' ) ) {
 
 			function clearOverlays() {
 				if (markersArray) {
-					for (var i=0;i<markersArray.length;i++) {
+					for (var key in markersArray) {
+						markersArray[key].setMap(null);
+					/*for (var i=0;i<markersArray.length;i++) {
 						markersArray[i].setMap(null);
+					*/
 					}
 				}
+			}
+
+			function insertAfter(referenceNode, newNode) {
+				referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
 			}
 
 			//function load_simplemap( lat, lng, aspid, ascid, asma ) {
@@ -735,7 +1507,10 @@ if ( !class_exists( 'Simple_Map' ) ) {
 					center: latlng,
 					mapTypeId: google.maps.MapTypeId[map_type] 
 				};
+
+
 				map = new google.maps.Map( document.getElementById( "simplemap" ), myOptions );
+				directions.setDisplay(map); //prepare for Google Directions API calls by using GmapDirections object
 
 				// Adsense for Google Maps
 				<?php 
@@ -1181,34 +1956,25 @@ if ( !class_exists( 'Simple_Map' ) ) {
 				marker.title = locationData.name;
 				markersArray.push(marker);
 
-				var mapwidth;
-				var mapheight;
-				var maxbubblewidth;
-				var maxbubbleheight;
-				
-				mapwidth = document.getElementById("simplemap");
-				if ( typeof mapwidth != 'undefined' ) {
-					mapwidth = mapwidth.offsetWidth;
-				} else {
-					if ( typeof map_width != 'undefined' ) {
-						mapwidth = Number(stringFilter(map_width));						
-					} else {
-						mapwidth = 400;
-					}
+				//added for custom Tooltip
+				var tooltipOptions={
+				  marker: marker,// required
+				  content: locationData.name,// required
+				  cssClass: 'tooltip' // name of a css class to apply to tooltip
+				};
+				if (typeof Tooltip === "undefined") {
+					Tooltip = TooltipWrapper();
 				}
-				
-				mapheight = document.getElementById("simplemap");
-				if ( typeof mapheight != 'undefined' ) {
-					mapheight = mapheight.offsetHeight;
-				} else {
-					if ( typeof map_height != 'undefined' ) {
-						mapheight = Number(stringFilter(map_height));						
-					} else {
-						mapheight = 200;
-					}
+				var tooltip = new Tooltip(tooltipOptions);
+
+				var mapwidth = Number(stringFilter(map_width));
+				if (map_width.indexOf("%") >= 0) {
+					mapwidth = jQuery("#simplemap").width();
 				}
-				maxbubblewidth = Math.round(mapwidth / 1.5);
-				maxbubbleheight = Math.round(mapheight / 2.2);
+				var mapheight = Number(stringFilter(map_height));
+
+				var maxbubblewidth = Math.round(mapwidth / 1.5);
+				var maxbubbleheight = Math.round(mapheight / 2.2);
 
 				var fontsize = 12;
 				var lineheight = 12;
@@ -1364,56 +2130,25 @@ if ( !class_exists( 'Simple_Map' ) ) {
 				}
 
 				html += '	</div>';
-/**
- * @name InfoBox
- * @version 1.1.13 [March 19, 2014]
- * @author Gary Little (inspired by proof-of-concept code from Pamela Fox of Google)
- * @copyright Copyright 2010 Gary Little [gary at luxcentral.com]
- */
-eval(function(p,a,c,k,e,r){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a)>35?String.fromCharCode(c+29):c.toString(36))};if(!''.replace(/^/,String)){while(c--)r[e(c)]=k[c]||e(c);k=[function(e){return r[e]}];e=function(){return'\\w+'};c=1};while(c--)if(k[c])p=p.replace(new RegExp('\\b'+e(c)+'\\b','g'),k[c]);return p}('7 8(a){a=a||{};r.s.1R.2k(2,3d);2.Q=a.1v||"";2.1H=a.1B||J;2.S=a.1G||0;2.H=a.1z||1h r.s.1Y(0,0);2.B=a.U||1h r.s.2E(0,0);2.15=a.13||t;2.1p=a.1t||"2h";2.1m=a.F||{};2.1E=a.1C||"3g";2.P=a.1j||"3b://38.r.33/2Y/2T/2N/1r.2K";3(a.1j===""){2.P=""}2.1f=a.1x||1h r.s.1Y(1,1);3(q a.A==="p"){3(q a.18==="p"){a.A=L}v{a.A=!a.18}}2.w=!a.A;2.17=a.1n||J;2.1I=a.2g||"2e";2.16=a.1l||J;2.4=t;2.z=t;2.14=t;2.V=t;2.E=t;2.R=t}8.9=1h r.s.1R();8.9.25=7(){5 i;5 f;5 a;5 d=2;5 c=7(e){e.20=L;3(e.1i){e.1i()}};5 b=7(e){e.30=J;3(e.1Z){e.1Z()}3(!d.16){c(e)}};3(!2.4){2.4=1e.2S("2Q");2.1d();3(q 2.Q.1u==="p"){2.4.O=2.G()+2.Q}v{2.4.O=2.G();2.4.1a(2.Q)}2.2J()[2.1I].1a(2.4);2.1w();3(2.4.6.D){2.R=L}v{3(2.S!==0&&2.4.Z>2.S){2.4.6.D=2.S;2.4.6.2D="2A";2.R=L}v{a=2.1P();2.4.6.D=(2.4.Z-a.W-a.11)+"12";2.R=J}}2.1F(2.1H);3(!2.16){2.E=[];f=["2t","1O","2q","2p","1M","2o","2n","2m","2l"];1o(i=0;i<f.1L;i++){2.E.1K(r.s.u.19(2.4,f[i],c))}2.E.1K(r.s.u.19(2.4,"1O",7(e){2.6.1J="2j"}))}2.V=r.s.u.19(2.4,"2i",b);r.s.u.T(2,"2f")}};8.9.G=7(){5 a="";3(2.P!==""){a="<2d";a+=" 2c=\'"+2.P+"\'";a+=" 2b=11";a+=" 6=\'";a+=" U: 2a;";a+=" 1J: 29;";a+=" 28: "+2.1E+";";a+="\'>"}K a};8.9.1w=7(){5 a;3(2.P!==""){a=2.4.3n;2.z=r.s.u.19(a,"1M",2.27())}v{2.z=t}};8.9.27=7(){5 a=2;K 7(e){e.20=L;3(e.1i){e.1i()}r.s.u.T(a,"3m");a.1r()}};8.9.1F=7(d){5 m;5 n;5 e=0,I=0;3(!d){m=2.1D();3(m 3l r.s.3k){3(!m.26().3h(2.B)){m.3f(2.B)}n=m.26();5 a=m.3e();5 h=a.Z;5 f=a.24;5 k=2.H.D;5 l=2.H.1k;5 g=2.4.Z;5 b=2.4.24;5 i=2.1f.D;5 j=2.1f.1k;5 o=2.23().3c(2.B);3(o.x<(-k+i)){e=o.x+k-i}v 3((o.x+g+k+i)>h){e=o.x+g+k+i-h}3(2.17){3(o.y<(-l+j+b)){I=o.y+l-j-b}v 3((o.y+l+j)>f){I=o.y+l+j-f}}v{3(o.y<(-l+j)){I=o.y+l-j}v 3((o.y+b+l+j)>f){I=o.y+b+l+j-f}}3(!(e===0&&I===0)){5 c=m.3a();m.39(e,I)}}}};8.9.1d=7(){5 i,F;3(2.4){2.4.37=2.1p;2.4.6.36="";F=2.1m;1o(i 35 F){3(F.34(i)){2.4.6[i]=F[i]}}2.4.6.32="31(0)";3(q 2.4.6.X!=="p"&&2.4.6.X!==""){2.4.6.2Z="\\"2X:2W.2V.2U(2R="+(2.4.6.X*1X)+")\\"";2.4.6.2P="2O(X="+(2.4.6.X*1X)+")"}2.4.6.U="2M";2.4.6.M=\'1c\';3(2.15!==t){2.4.6.13=2.15}}};8.9.1P=7(){5 c;5 a={1b:0,1g:0,W:0,11:0};5 b=2.4;3(1e.1s&&1e.1s.1W){c=b.2L.1s.1W(b,"");3(c){a.1b=C(c.1V,10)||0;a.1g=C(c.1U,10)||0;a.W=C(c.1T,10)||0;a.11=C(c.1S,10)||0}}v 3(1e.2I.N){3(b.N){a.1b=C(b.N.1V,10)||0;a.1g=C(b.N.1U,10)||0;a.W=C(b.N.1T,10)||0;a.11=C(b.N.1S,10)||0}}K a};8.9.2H=7(){3(2.4){2.4.2G.2F(2.4);2.4=t}};8.9.1y=7(){2.25();5 a=2.23().2C(2.B);2.4.6.W=(a.x+2.H.D)+"12";3(2.17){2.4.6.1g=-(a.y+2.H.1k)+"12"}v{2.4.6.1b=(a.y+2.H.1k)+"12"}3(2.w){2.4.6.M="1c"}v{2.4.6.M="A"}};8.9.2B=7(a){3(q a.1t!=="p"){2.1p=a.1t;2.1d()}3(q a.F!=="p"){2.1m=a.F;2.1d()}3(q a.1v!=="p"){2.1Q(a.1v)}3(q a.1B!=="p"){2.1H=a.1B}3(q a.1G!=="p"){2.S=a.1G}3(q a.1z!=="p"){2.H=a.1z}3(q a.1n!=="p"){2.17=a.1n}3(q a.U!=="p"){2.1q(a.U)}3(q a.13!=="p"){2.22(a.13)}3(q a.1C!=="p"){2.1E=a.1C}3(q a.1j!=="p"){2.P=a.1j}3(q a.1x!=="p"){2.1f=a.1x}3(q a.18!=="p"){2.w=a.18}3(q a.A!=="p"){2.w=!a.A}3(q a.1l!=="p"){2.16=a.1l}3(2.4){2.1y()}};8.9.1Q=7(a){2.Q=a;3(2.4){3(2.z){r.s.u.Y(2.z);2.z=t}3(!2.R){2.4.6.D=""}3(q a.1u==="p"){2.4.O=2.G()+a}v{2.4.O=2.G();2.4.1a(a)}3(!2.R){2.4.6.D=2.4.Z+"12";3(q a.1u==="p"){2.4.O=2.G()+a}v{2.4.O=2.G();2.4.1a(a)}}2.1w()}r.s.u.T(2,"2z")};8.9.1q=7(a){2.B=a;3(2.4){2.1y()}r.s.u.T(2,"21")};8.9.22=7(a){2.15=a;3(2.4){2.4.6.13=a}r.s.u.T(2,"2y")};8.9.2x=7(a){2.w=!a;3(2.4){2.4.6.M=(2.w?"1c":"A")}};8.9.2w=7(){K 2.Q};8.9.1A=7(){K 2.B};8.9.2v=7(){K 2.15};8.9.2u=7(){5 a;3((q 2.1D()==="p")||(2.1D()===t)){a=J}v{a=!2.w}K a};8.9.3i=7(){2.w=J;3(2.4){2.4.6.M="A"}};8.9.3j=7(){2.w=L;3(2.4){2.4.6.M="1c"}};8.9.2s=7(c,b){5 a=2;3(b){2.B=b.1A();2.14=r.s.u.2r(b,"21",7(){a.1q(2.1A())})}2.1N(c);3(2.4){2.1F()}};8.9.1r=7(){5 i;3(2.z){r.s.u.Y(2.z);2.z=t}3(2.E){1o(i=0;i<2.E.1L;i++){r.s.u.Y(2.E[i])}2.E=t}3(2.14){r.s.u.Y(2.14);2.14=t}3(2.V){r.s.u.Y(2.V);2.V=t}2.1N(t)};',62,210,'||this|if|div_|var|style|function|InfoBox|prototype||||||||||||||||undefined|typeof|google|maps|null|event|else|isHidden_|||closeListener_|visible|position_|parseInt|width|eventListeners_|boxStyle|getCloseBoxImg_|pixelOffset_|yOffset|false|return|true|visibility|currentStyle|innerHTML|closeBoxURL_|content_|fixedWidthSet_|maxWidth_|trigger|position|contextListener_|left|opacity|removeListener|offsetWidth||right|px|zIndex|moveListener_|zIndex_|enableEventPropagation_|alignBottom_|isHidden|addDomListener|appendChild|top|hidden|setBoxStyle_|document|infoBoxClearance_|bottom|new|stopPropagation|closeBoxURL|height|enableEventPropagation|boxStyle_|alignBottom|for|boxClass_|setPosition|close|defaultView|boxClass|nodeType|content|addClickHandler_|infoBoxClearance|draw|pixelOffset|getPosition|disableAutoPan|closeBoxMargin|getMap|closeBoxMargin_|panBox_|maxWidth|disableAutoPan_|pane_|cursor|push|length|click|setMap|mouseover|getBoxWidths_|setContent|OverlayView|borderRightWidth|borderLeftWidth|borderBottomWidth|borderTopWidth|getComputedStyle|100|Size|preventDefault|cancelBubble|position_changed|setZIndex|getProjection|offsetHeight|createInfoBoxDiv_|getBounds|getCloseClickHandler_|margin|pointer|relative|align|src|img|floatPane|domready|pane|infoBox|contextmenu|default|apply|touchmove|touchend|touchstart|dblclick|mouseup|mouseout|addListener|open|mousedown|getVisible|getZIndex|getContent|setVisible|zindex_changed|content_changed|auto|setOptions|fromLatLngToDivPixel|overflow|LatLng|removeChild|parentNode|onRemove|documentElement|getPanes|gif|ownerDocument|absolute|mapfiles|alpha|filter|div|Opacity|createElement|en_us|Alpha|Microsoft|DXImageTransform|progid|intl|MsFilter|returnValue|translateZ|WebkitTransform|com|hasOwnProperty|in|cssText|className|www|panBy|getCenter|http|fromLatLngToContainerPixel|arguments|getDiv|setCenter|2px|contains|show|hide|Map|instanceof|closeclick|firstChild'.split('|'),0,{}));
-
-				google.maps.event.addListener(marker, 'click', function() {
-					clearInfoWindows();
-					var infowidth = 0;
-					if ( maxbubblewidth <= 100 ) {
-						infowidth = document.getElementById("simplemap");
-						if ( typeof infowidth != 'undefined' ) {
-							infowidth = infowidth.offsetWidth;
-						} else {
-							infowidth = 400;
-						}
-					    infowidth = infowidth * (maxbubblewidth / 100.0);
-					}
-					if ( infowidth < maxbubblewidth ) infowidth = maxbubblewidth;
-					infowidth = parseInt(infowidth) + 'px';
-/*
+				
+				google.maps.event.addListener(marker, 'click', function(e) {
+					//remember center of map before opening up marker so map can return there after marker is closed
+					directions.mapCenter = map.getCenter();
+					clearInfoWindows();										
 					var infowindow = new google.maps.InfoWindow({
-						maxWidth: infowidth,
-						content: html
-					});				
-*/
-
-					var infowindow = new InfoBox({
-						maxWidth: infowidth
-						,content: html
-		,disableAutoPan: false
-		,pixelOffset: new google.maps.Size(-80,-80)
-		,alignBottom: true
-		,zIndex: null
-		,boxStyle: { 
-		  opacity: 1.0
-		 ,fontSize:'11pt'
-		 }
-		,closeBoxURL: "http://www.google.com/intl/en_us/mapfiles/close.gif"
-		,infoBoxClearance: new google.maps.Size(1, 1)
-		,isHidden: false
-		,pane: "floatPane"
-		,enableEventPropagation: true
-
-					});				
+						maxWidth: maxbubblewidth,
+						content: directions.wrapInfowindow(html, locationData.name, marker) /*inserts logic from GmapDirections object so user can ask for directions with multiple routes */
+					});
 					infowindow.open(map, marker);
 					infowindowsArray.push(infowindow);
-					window.location = '#map_top';
+					window.location = '#map_top';	//Need this when results div below map are clicked so user can focus on window that just opened. But, GmapDirections author is considering removing because behavior is not likely to be wanted by end user				
+
+					directions.setDirections(this, infowindow); //'this' refers to marker which has position information and this call sets event listener in GmapDirections object so user can interact with direction buttons inside infowindow
+
+					//return map to previous center before marker was clicked.
+					google.maps.event.addListener(infowindow, 'closeclick', function(e) {
+						map.setCenter(directions.mapCenter);
+					});
 				});
 
 				return marker;
@@ -1513,7 +2248,8 @@ eval(function(p,a,c,k,e,r){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a
 					if (locationData.country) { if ( '' != dir_address2 ) { dir_address2 += ' '; } dir_address2 += locationData.country };
 					if ( '' != dir_address2 ) { dir_address += '(' + escape( dir_address2 ) + ')' };
 
-					html += '<a class="result_directions" href="http://google' + default_domain + '/maps?saddr=' + searchData.homeAddress + '&daddr=' + dir_address + '" target="_blank">' + get_directions_text + '</a>';
+					//html += '<a class="result_directions" href="http://google' + default_domain + '/maps?saddr=' + searchData.homeAddress + '&daddr=' + dir_address + '" target="_blank">' + get_directions_text + '</a>';
+					html += '<a class="result_directions" style="display: none" href="#map_top" onclick="directions.computeDirections(null, dir_address, \'address\'); return false;">' + 'Add to Trip' + '</a>'; //TODO: Currently hidden on page. Custom injection for GmapDirections so instead of new page, user can add the site as a stop / waypoint on the map. TODO: Add as waypoint before calling computeDirections. Figure out if allow drop functionality. 
 				}
 				html += '</div>';
 				html += '<div style="clear: both;"></div>';
@@ -2345,7 +3081,7 @@ eval(function(p,a,c,k,e,r){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a
 			}
 
 			$atts = $tax_atts + array(
-				'search_title'				=> __( 'Find Locations Near:', 'SimpleMap' ), 
+				'search_title'				=> __( 'Starting Location or Find Locations Near:', 'SimpleMap' ), 
 				'search_form_type'			=> 'table', 
 				'search_form_cols'			=> 3, 
 				'search_fields'				=> 'labelbr_street||labelbr_city||labelbr_state||labelbr_zip||empty||empty||labeltd_distance||empty' . implode('', $tax_search_fields) . '||submit||empty||empty', 
